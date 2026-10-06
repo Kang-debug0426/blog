@@ -1,0 +1,25 @@
+# 凭据与本地环境 —— 绝不提交
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# 数据库 / 迁移产物（本轮未产生；此处为预防性声明）
+*.sql
+*.sql.gz
+# ⚠️ 例外：LEGACY-DEFECT-01 的**只读存证** SQL（是文档，不是可执行迁移脚本）
+!tests/fixtures/*.sql
+
+# 本地临时输出
+pytest-out.txt

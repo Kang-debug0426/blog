@@ -72,7 +72,7 @@ const insertCommentEmoji = (char) => {
 }
 
 /* 验证码 */
-const captcha = ref({ question: '', result: null })
+const captcha = ref({ captchaId: '', question: '' })
 const captchaHover = ref(false)
 const captchaFocus = ref(false)
 const loadCaptcha = async () => {
@@ -95,30 +95,21 @@ const loadArticle = async (slug) => {
     articleCover.value = article.value.coverImage || ''
     const items = []
     if (article.value.publishTime)
-      items.push(
-        `<span class="meta-item"><i class="iconfont icon-time"></i>${article.value.publishTime.slice(0, 16).replace('T', ' ')}</span>`
-      )
+      items.push({
+        icon: 'icon-time',
+        text: article.value.publishTime.slice(0, 16).replace('T', ' ')
+      })
     if (article.value.viewCount != null)
-      items.push(
-        `<span class="meta-item"><i class="iconfont icon-eye"></i>${article.value.viewCount} 浏览</span>`
-      )
+      items.push({ icon: 'icon-eye', text: `${article.value.viewCount} 浏览` })
     if (article.value.commentCount != null)
-      items.push(
-        `<span class="meta-item"><i class="iconfont icon-pinglun"></i>${article.value.commentCount} 评论</span>`
-      )
+      items.push({ icon: 'icon-pinglun', text: `${article.value.commentCount} 评论` })
     if (article.value.categoryName)
-      items.push(
-        `<span class="meta-item"><i class="iconfont icon-folder"></i>${article.value.categoryName}</span>`
-      )
+      items.push({ icon: 'icon-folder', text: article.value.categoryName })
     if (article.value.wordCount)
-      items.push(
-        `<span class="meta-item"><i class="iconfont icon-guidang"></i>${article.value.wordCount} 字</span>`
-      )
+      items.push({ icon: 'icon-guidang', text: `${article.value.wordCount} 字` })
     if (article.value.readingTime)
-      items.push(
-        `<span class="meta-item"><i class="iconfont icon-time"></i>${article.value.readingTime} 分钟</span>`
-      )
-    articleMeta.value = items.join('<span class="meta-dot">·</span>')
+      items.push({ icon: 'icon-time', text: `${article.value.readingTime} 分钟` })
+    articleMeta.value = items
     loadComments()
     checkLike()
     loadCaptcha()
@@ -142,7 +133,11 @@ const loadComments = async () => {
 const checkLike = async () => {
   if (!article.value || !visitorStore.visitorId) return
   try {
-    const res = await hasLiked(article.value.id, visitorStore.visitorId)
+    const res = await hasLiked(
+      article.value.id,
+      visitorStore.visitorToken,
+      visitorStore.fingerprint
+    )
     liked.value = res.data.data === true
   } catch {
     liked.value = false
@@ -154,11 +149,19 @@ const toggleLike = async () => {
   liking.value = true
   try {
     if (liked.value) {
-      await unlikeArticle(article.value.id, visitorStore.visitorId)
+      await unlikeArticle(
+        article.value.id,
+        visitorStore.visitorToken,
+        visitorStore.fingerprint
+      )
       liked.value = false
       article.value.likeCount = Math.max(0, (article.value.likeCount ?? 1) - 1)
     } else {
-      await likeArticle(article.value.id, visitorStore.visitorId)
+      await likeArticle(
+        article.value.id,
+        visitorStore.visitorToken,
+        visitorStore.fingerprint
+      )
       liked.value = true
       article.value.likeCount = (article.value.likeCount ?? 0) + 1
     }
@@ -175,10 +178,10 @@ const handleSubmitComment = async () => {
     ElMessage.warning('请填写昵称和内容')
     return
   }
-  // 验证码校验
+  // 验证码基础校验（实际验证在服务端）
   const answer = parseInt(commentForm.value.captchaAnswer, 10)
-  if (isNaN(answer) || answer !== captcha.value.result) {
-    ElMessage.warning('验证码错误，请重新计算')
+  if (isNaN(answer)) {
+    ElMessage.warning('请输入正确的验证码')
     loadCaptcha()
     return
   }
@@ -192,12 +195,18 @@ const handleSubmitComment = async () => {
       content: content,
       nickname: nick,
       visitorId: visitorStore.visitorId,
-      emailOrQq: commentForm.value.emailOrQq || visitorStore.email || '',
+      emailOrQq: commentForm.value.emailOrQq || '',
       isMarkdown: commentForm.value.isMarkdown ? 1 : 0,
       isSecret: commentForm.value.isSecret ? 1 : 0,
-      isNotice: commentForm.value.isNotice ? 1 : 0
+      isNotice: commentForm.value.isNotice ? 1 : 0,
+      captchaId: captcha.value.captchaId,
+      captchaAnswer: answer
     }
-    await submitComment(payload)
+    await submitComment(
+      payload,
+      visitorStore.visitorToken,
+      visitorStore.fingerprint
+    )
     visitorStore.nickname = nick
     if (commentForm.value.emailOrQq)
       visitorStore.email = commentForm.value.emailOrQq
@@ -235,17 +244,21 @@ const startEdit = (c) => {
 const doEdit = async (c) => {
   if (!editContent.value.trim()) return
   try {
-    await editComment({
-      id: c.id,
-      visitorId: visitorStore.visitorId,
-      content: editContent.value.trim(),
-      isMarkdown: c.isMarkdown ?? 0
-    })
+    await editComment(
+      {
+        id: c.id,
+        visitorId: visitorStore.visitorId,
+        content: editContent.value.trim(),
+        isMarkdown: c.isMarkdown ?? 0
+      },
+      visitorStore.visitorToken,
+      visitorStore.fingerprint
+    )
     editingId.value = null
     ElMessage.success('修改成功')
     loadComments()
   } catch {
-    ElMessage.error('修改失败')
+    // 错误提示由响应拦截器统一处理
   }
 }
 const doDelete = async (c) => {
@@ -259,31 +272,27 @@ const doDelete = async (c) => {
     return // 用户取消
   }
   try {
-    await deleteComment(c.id, visitorStore.visitorId)
+    await deleteComment(
+      c.id,
+      visitorStore.visitorToken,
+      visitorStore.fingerprint
+    )
     ElMessage.success('删除成功')
     loadComments()
-  } catch (e) {
-    ElMessage.error(e.response?.data?.msg || '删除失败')
+  } catch {
+    // 错误提示由响应拦截器统一处理
   }
 }
 
 const fmtDate = (d) => (d ? d.slice(0, 16).replace('T', ' ') : '')
 const isOwn = (c) => c.visitorId && c.visitorId === visitorStore.visitorId
 
-/* 头像 */
+/* 头像：博主回复用个人信息头像，其余用服务端下发的QQ头像（仅填QQ号或QQ邮箱的评论有值） */
 const getAvatarUrl = (c) => {
-  // 如果是博主回复，使用个人信息的头像
   if (c.isAdminReply && blogStore.personalInfo?.avatar) {
     return blogStore.personalInfo.avatar
   }
-  const eq = c.emailOrQq
-  if (!eq) return ''
-  // 纯数字 → QQ号
-  if (/^\d{5,11}$/.test(eq)) return `https://q1.qlogo.cn/g?b=qq&nk=${eq}&s=640`
-  // @qq.com → 提取QQ号
-  const m = eq.match(/^(\d{5,11})@qq\.com$/i)
-  if (m) return `https://q1.qlogo.cn/g?b=qq&nk=${m[1]}&s=640`
-  return ''
+  return c.avatar || ''
 }
 const getInitial = (name) => (name ? name.charAt(0).toUpperCase() : '?')
 
@@ -307,6 +316,11 @@ const flatCommentCount = computed(() => {
   walk(comments.value)
   return count
 })
+
+/* 目录是否存在 */
+const hasToc = computed(() =>
+  /<h[1-4]\b/i.test(article.value?.contentHtml || '')
+)
 
 /* 文章内容：优先 MdPreview（需要 contentMarkdown），否则回退 v-html */
 const hasMarkdown = computed(() => !!article.value?.contentMarkdown?.trim())
@@ -344,18 +358,28 @@ onMounted(() => {
     </div>
 
     <template v-else-if="article">
-      <div class="article-layout">
+      <div class="article-layout" :class="{ centered: !hasToc }">
         <!-- 左侧: 文章内容 -->
         <div class="article-main">
           <div class="article-card">
             <!-- 文章概要 -->
             <div v-if="article.summary" class="article-summary-block">
               <i class="iconfont icon-guidang" />
-              <p>{{ article.summary }}</p>
+              <div class="summary-main">
+                <p>{{ article.summary }}</p>
+                <div class="summary-ai-tip">
+                  <i class="iconfont icon-zhinengyouhua" />
+                  <span>该文章摘要由AI生成</span>
+                </div>
+              </div>
             </div>
 
             <!-- 正文 -->
             <div class="article-content">
+              <!-- 正文用 MdPreview 渲染 Markdown：代码高亮、语言标签、复制代码按钮、代码折叠都由
+                   该组件生成；服务端 contentHtml 里只有裸的 pre/code，没有 md-editor-code 结构，
+                   改用它代码块会退化成无高亮的纯色块。
+                   文章正文仅管理端可写入，服务端仍会重新生成净化后的 contentHtml 供 RSS 等消费方 -->
               <MdPreview
                 v-if="hasMarkdown"
                 editorId="blog-article-preview"
@@ -365,6 +389,7 @@ onMounted(() => {
                 codeTheme="atom"
                 class="md-preview-fill"
               />
+              <!-- 兜底：旧数据可能只存了 HTML 正文而没有 Markdown 源，此时渲染服务端净化后的 HTML -->
               <div v-else v-html="lazyContentHtml" class="fallback-content" />
             </div>
 
@@ -543,7 +568,7 @@ onMounted(() => {
                             d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"
                           />
                           <circle cx="12" cy="10" r="3" /></svg
-                        >{{ c.location || '未知' }}</span
+                        >{{ c.location }}</span
                       >
                       <span class="c-meta-item"
                         ><svg
@@ -647,7 +672,7 @@ onMounted(() => {
                                   d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"
                                 />
                                 <circle cx="12" cy="10" r="3" /></svg
-                              >{{ child.location || '未知' }}</span
+                              >{{ child.location }}</span
                             >
                             <span class="c-meta-item"
                               ><svg
@@ -741,7 +766,7 @@ onMounted(() => {
         </div>
 
         <!-- 右侧: 目录 -->
-        <aside class="article-sidebar">
+        <aside v-if="hasToc" class="article-sidebar">
           <TableOfContents
             :content-html="article.contentMarkdown || article.contentHtml"
           />
@@ -761,11 +786,21 @@ onMounted(() => {
 .loading-wrap {
   padding: 20px 0;
 }
+@keyframes sk-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
 .skeleton-line {
   height: 14px;
-  background: #ebeef5;
   border-radius: 4px;
   margin-bottom: 10px;
+  background: linear-gradient(90deg, #ebeef5 25%, #f5f7fa 50%, #ebeef5 75%);
+  background-size: 200% 100%;
+  animation: sk-shimmer 1.5s ease-in-out infinite;
 }
 .w60 {
   width: 60%;
@@ -782,6 +817,10 @@ onMounted(() => {
   display: flex;
   gap: 24px;
   align-items: flex-start;
+}
+.article-layout.centered .article-main {
+  max-width: 800px;
+  margin: 0 auto;
 }
 .article-main {
   flex: 1;
@@ -828,6 +867,31 @@ onMounted(() => {
 }
 .article-summary-block p {
   margin: 0;
+}
+.summary-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.summary-main p {
+  margin: 0;
+}
+.summary-ai-tip {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-end;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--blog-text3, #909399);
+  white-space: nowrap;
+}
+.summary-ai-tip .iconfont {
+  font-size: 15px;
+  margin-top: 0;
+  line-height: 1;
 }
 
 .article-content {

@@ -67,6 +67,11 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          // Vite 内部模块（含 __vitePreload 预加载助手）统一并入 vendor：
+          // 该助手被入口静态引用，若落进 md-editor 这类懒加载分包，入口就会被迫预加载整个编辑器
+          if (id.includes('node_modules/vite') || id.includes('\0vite') || id.includes('preload-helper')) {
+            return 'vendor'
+          }
           if (id.includes('node_modules')) {
             if (id.includes('element-plus')) {
               return 'element'

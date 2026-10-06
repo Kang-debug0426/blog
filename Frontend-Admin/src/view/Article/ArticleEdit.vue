@@ -1,9 +1,12 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { useArticleStore } from '@/stores'
 import { uploadFile } from '@/api/settings'
+import { getAiStatus } from '@/api/ai'
 import { MdEditor } from 'md-editor-v3'
+import EmojiPicker from '@/components/EmojiPicker.vue'
+import AiCorrectionDialog from '@/components/AiCorrectionDialog.vue'
 import 'md-editor-v3/lib/style.css'
 
 const route = useRoute()
@@ -11,6 +14,12 @@ const router = useRouter()
 const articleStore = useArticleStore()
 
 const isEdit = computed(() => !!route.params.id)
+
+// 后端是否启用了 AI 摘要模块（未打包或未启用时为 false，隐藏 AI 开关）
+const aiEnabled = ref(false)
+
+// AI 纠错弹窗可见性
+const showAiCorrection = ref(false)
 
 const form = ref({
   id: null,
@@ -22,7 +31,8 @@ const form = ref({
   tagIds: [],
   contentMarkdown: '',
   contentHtml: '',
-  isPublished: 0
+  isPublished: 0,
+  aiGenerateSummary: false
 })
 
 /* ---- 同步编辑器渲染后的 HTML ---- */
@@ -32,6 +42,7 @@ const onHtmlChanged = (html) => {
 
 const saving = ref(false)
 const uploadingCover = ref(false)
+const editorPanelRef = ref(null)
 
 /* ---- 图片上传（md-editor-v3 回调格式） ---- */
 const onUploadImg = async (files, callback) => {
@@ -80,24 +91,86 @@ const autoSlug = () => {
   }
 }
 
+/* ---- 快捷插入 emoji ---- */
+const insertEditorEmoji = (char) => {
+  const textarea = editorPanelRef.value?.querySelector('textarea')
+  if (!textarea) {
+    form.value.contentMarkdown += char
+    return
+  }
+
+  const start = textarea.selectionStart ?? form.value.contentMarkdown.length
+  const end = textarea.selectionEnd ?? form.value.contentMarkdown.length
+  const val = form.value.contentMarkdown
+  form.value.contentMarkdown = val.slice(0, start) + char + val.slice(end)
+
+  nextTick(() => {
+    const pos = start + char.length
+    textarea.setSelectionRange(pos, pos)
+    textarea.focus()
+  })
+}
+
+/* ---- AI 纠错 ---- */
+/**
+ * 应用 AI 纠错结果：将用户确认后的内容替换编辑器中的 Markdown，
+ * 并同步更新 HTML；替换后刷新快照，避免被误判为未保存
+ * @param {string} corrected 用户确认后的完整 Markdown 内容
+ */
+const applyAiCorrection = (corrected) => {
+  form.value.contentMarkdown = corrected
+  takeSnapshot()
+  ElMessage.success('AI 纠错内容已应用')
+}
+
 /* ---- 保存 / 发布 ---- */
 const isSaved = ref(false)
-const handleSave = async (isPublished) => {
+const handleSave = async (
+  isPublished,
+  { redirectAfterSave = isPublished === 1 } = {}
+) => {
   if (!form.value.title.trim()) return ElMessage.warning('请输入文章标题')
   if (!form.value.slug.trim())
     return ElMessage.warning('请输入 URL 标识 (Slug)')
   if (!form.value.contentMarkdown.trim())
     return ElMessage.warning('请输入文章内容')
   if (!form.value.categoryId) return ElMessage.warning('请选择文章分类')
+  if (saving.value) return
   saving.value = true
   try {
     form.value.isPublished = isPublished
-    await articleStore.saveArticle({ ...form.value })
-    isSaved.value = true
+    // 勾选AI生成摘要时：本地保留用户手写摘要（取消勾选可恢复），但发布时不传递，交给后端异步生成
+    const payload = { ...form.value }
+    if (isPublished === 1 && form.value.aiGenerateSummary) {
+      payload.summary = ''
+    }
+    await articleStore.saveArticle(payload)
+    isSaved.value = isPublished === 1 && redirectAfterSave
+    takeSnapshot()
     ElMessage.success(isPublished ? '发布成功' : '保存草稿成功')
-    router.push('/article/list')
+    if (isPublished === 1 && form.value.aiGenerateSummary) {
+      ElMessage.info('AI 摘要生成中，稍后刷新页面可见')
+    }
+    if (redirectAfterSave) {
+      router.push('/article/list')
+    }
+  } catch (error) {
+    if (error?.response?.status === 401) {
+      ElMessage.warning('登录已过期，请重新登录')
+      const redirect = route.fullPath || '/article/edit'
+      router.push({ path: '/login', query: { redirect } })
+    }
+    throw error
   } finally {
     saving.value = false
+  }
+}
+
+/* ---- Ctrl/Cmd + S 保存草稿 ---- */
+const onKeydownSave = (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault()
+    handleSave(0, { redirectAfterSave: false })
   }
 }
 
@@ -139,7 +212,7 @@ onBeforeRouteLeave(async () => {
       type: 'warning'
     })
     // 用户点击保存草稿
-    await handleSave(0)
+    await handleSave(0, { redirectAfterSave: false })
     return true
   } catch (action) {
     if (action === 'cancel') {
@@ -152,6 +225,14 @@ onBeforeRouteLeave(async () => {
 })
 
 onMounted(async () => {
+  window.addEventListener('keydown', onKeydownSave)
+
+  takeSnapshot()
+
+  // 探测后端 AI 模块能力：未打包或未启用时自动隐藏"AI 生成摘要"开关
+  const aiStatus = await getAiStatus()
+  aiEnabled.value = aiStatus?.enabled === true
+
   await Promise.all([articleStore.fetchCategories(), articleStore.fetchTags()])
   if (isEdit.value) {
     const res = await articleStore.fetchDetail(route.params.id)
@@ -171,6 +252,10 @@ onMounted(async () => {
   }
   takeSnapshot()
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydownSave)
+})
 </script>
 
 <template>
@@ -181,7 +266,14 @@ onMounted(async () => {
 
       <div class="edit-actions">
         <el-button size="small" @click="router.push('/article/list')"
-          >取消</el-button
+          >返回</el-button
+        >
+        <el-button
+          v-if="aiEnabled"
+          size="small"
+          :disabled="!form.contentMarkdown.trim()"
+          @click="showAiCorrection = true"
+          >AI 纠错</el-button
         >
         <el-button size="small" :loading="saving" @click="handleSave(0)"
           >保存草稿</el-button
@@ -210,7 +302,10 @@ onMounted(async () => {
     <!-- 主体区域 -->
     <div class="edit-body">
       <!-- Markdown 编辑器 -->
-      <div class="editor-panel">
+      <div ref="editorPanelRef" class="editor-panel">
+        <div class="editor-toolbar-emoji">
+          <EmojiPicker @select="insertEditorEmoji" />
+        </div>
         <MdEditor
           v-model="form.contentMarkdown"
           preview-theme="github"
@@ -236,12 +331,17 @@ onMounted(async () => {
         <div class="aside-section">
           <div class="aside-label">摘要</div>
           <el-input
+            v-if="!form.aiGenerateSummary"
             v-model="form.summary"
             type="textarea"
             :rows="3"
             placeholder="文章摘要（选填）"
             size="small"
           />
+          <div v-if="aiEnabled" class="ai-summary-switch">
+            <el-switch v-model="form.aiGenerateSummary" size="small" />
+            <span class="ai-summary-tip">AI 生成摘要</span>
+          </div>
         </div>
 
         <div class="aside-section">
@@ -307,6 +407,13 @@ onMounted(async () => {
         </div>
       </aside>
     </div>
+
+    <!-- AI 错别字/病句纠错弹窗 -->
+    <AiCorrectionDialog
+      v-model="showAiCorrection"
+      :content="form.contentMarkdown"
+      @applied="applyAiCorrection"
+    />
   </div>
 </template>
 
@@ -364,11 +471,28 @@ onMounted(async () => {
 
 /* 编辑器面板 */
 .editor-panel {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.editor-toolbar-emoji {
+  position: absolute;
+  left: 666px;
+  top: 2px;
+  z-index: 20;
+}
+.editor-toolbar-emoji :deep(.emoji-trigger) {
+  width: 30px;
+  height: 30px;
+}
+.editor-toolbar-emoji :deep(.emoji-panel) {
+  top: 36px;
+  bottom: auto;
+  z-index: 3000;
 }
 
 /* md-editor-v3 填满面板高度 */
@@ -413,9 +537,26 @@ onMounted(async () => {
   color: #f56c6c;
 }
 
+/* AI 生成摘要开关 */
+.ai-summary-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.ai-summary-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+}
+
 /* 封面上传 */
 .cover-uploader {
   width: 100%;
+}
+.cover-uploader :deep(.el-upload) {
+  width: 100%;
+  display: block;
 }
 .cover-preview {
   width: 100%;
@@ -426,6 +567,7 @@ onMounted(async () => {
 }
 .cover-placeholder {
   width: 100%;
+  box-sizing: border-box;
   height: 78px;
   border: 1px dashed #d3d6db;
   border-radius: 6px;

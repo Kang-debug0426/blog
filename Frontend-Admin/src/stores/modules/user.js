@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { login, getProfile, logout } from '@/api/auth'
 import router from '@/router'
 
@@ -8,6 +8,9 @@ export const useUserStore = defineStore(
   () => {
     const token = ref(localStorage.getItem('admin_token') || '')
     const userInfo = ref({})
+
+    /** 是否游客账号（role=0） */
+    const isGuest = computed(() => userInfo.value?.role === 0)
 
     /** 持久化写入 Token */
     const setToken = (newToken) => {
@@ -37,7 +40,8 @@ export const useUserStore = defineStore(
       } catch {
         // 个人信息获取失败不影响登录跳转
       }
-      router.push('/dashboard')
+      const redirect = router.currentRoute.value?.query?.redirect
+      router.push(typeof redirect === 'string' && redirect ? redirect : '/dashboard')
     }
 
     /** 拉取当前管理员信息 */
@@ -66,6 +70,7 @@ export const useUserStore = defineStore(
     return {
       token,
       userInfo,
+      isGuest,
       isLoggedIn,
       setToken,
       setUserInfo,

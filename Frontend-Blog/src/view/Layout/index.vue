@@ -10,10 +10,25 @@ const route = useRoute()
 const blogStore = useBlogStore()
 const visitorStore = useVisitorStore()
 
+/* 暗黑模式检测 */
+const initTheme = () => {
+  const mq = window.matchMedia('(prefers-color-scheme: dark)')
+  if (mq.matches) {
+    document.documentElement.classList.add('dark')
+  }
+  mq.addEventListener('change', (e) => {
+    if (e.matches) {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+  })
+}
+
 /* 文章详情页会通过 provide/inject 传递封面和标题 */
 const articleCover = ref('')
 const articleTitle = ref('')
-const articleMeta = ref('')
+const articleMeta = ref([])
 
 provide('setHero', { articleCover, articleTitle, articleMeta })
 
@@ -23,7 +38,7 @@ watch(
   () => {
     articleCover.value = ''
     articleTitle.value = ''
-    articleMeta.value = ''
+    articleMeta.value = []
   }
 )
 
@@ -37,6 +52,7 @@ const scrollToTop = () => {
 }
 
 onMounted(() => {
+  initTheme()
   blogStore.init()
   visitorStore.record()
   window.addEventListener('scroll', onScroll, { passive: true })
@@ -52,7 +68,7 @@ onUnmounted(() => {
     <HeroBanner
       :cover-image="articleCover"
       :title="articleTitle"
-      :meta="articleMeta"
+      :meta-items="articleMeta"
     />
     <main class="blog-main">
       <div class="main-inner">

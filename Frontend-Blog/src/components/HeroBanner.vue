@@ -12,7 +12,9 @@ const props = defineProps({
   coverImage: { type: String, default: '' },
   /** 文章标题 */
   title: { type: String, default: '' },
-  /** 文章 meta 信息 */
+  /** 结构化 meta 信息（[{ icon, text }]），以文本渲染，避免拼接 HTML */
+  metaItems: { type: Array, default: () => [] },
+  /** 纯文本 meta 信息（分类/标签等简单页面使用） */
   meta: { type: String, default: '' }
 })
 
@@ -41,7 +43,16 @@ const bgImage = computed(() => {
       <!-- 自定义标题 (文章/分类/标签等) -->
       <template v-else-if="title">
         <h1 class="hero-article-title">{{ title }}</h1>
-        <p v-if="meta" class="hero-article-meta" v-html="meta" />
+        <p v-if="metaItems.length" class="hero-article-meta">
+          <template v-for="(item, index) in metaItems" :key="index">
+            <span v-if="index > 0" class="meta-dot">·</span>
+            <span class="meta-item">
+              <i v-if="item.icon" class="iconfont" :class="item.icon" />
+              {{ item.text }}
+            </span>
+          </template>
+        </p>
+        <p v-else-if="meta" class="hero-article-meta">{{ meta }}</p>
       </template>
       <!-- 其他页面: 显示路由 meta 标题 -->
       <template v-else>

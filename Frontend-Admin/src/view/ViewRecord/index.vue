@@ -1,11 +1,12 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useAnalyticsStore } from '@/stores'
+import { useAnalyticsStore, useUserStore } from '@/stores'
 import dayjs from 'dayjs'
 
 const analyticsStore = useAnalyticsStore()
+const userStore = useUserStore()
 
-const searchForm = ref({ pagePath: '', visitorId: '' })
+const searchForm = ref({ pagePath: '', ipAddress: '', visitorId: '' })
 const page = ref(1)
 const size = ref(15)
 const selected = ref([])
@@ -15,6 +16,7 @@ const load = () => {
     page: page.value,
     pageSize: size.value,
     pagePath: searchForm.value.pagePath || undefined,
+    ipAddress: searchForm.value.ipAddress || undefined,
     visitorId: searchForm.value.visitorId || undefined
   })
 }
@@ -25,7 +27,7 @@ const handleSearch = () => {
 }
 
 const handleReset = () => {
-  searchForm.value = { pagePath: '', visitorId: '' }
+  searchForm.value = { pagePath: '', ipAddress: '', visitorId: '' }
   handleSearch()
 }
 
@@ -70,7 +72,9 @@ const batchDelete = async () => {
 
 const fmtDate = (d) => (d ? dayjs(d).format('YYYY-MM-DD HH:mm') : '-')
 
-onMounted(load)
+onMounted(() => {
+  if (!userStore.isGuest) load()
+})
 </script>
 
 <template>
@@ -89,6 +93,13 @@ onMounted(load)
             <span class="iconfont icon-search" />
           </template>
         </el-input>
+        <el-input
+          v-model="searchForm.ipAddress"
+          placeholder="访客 IP"
+          clearable
+          class="search-input-sm"
+          @keyup.enter="handleSearch"
+        />
         <el-input
           v-model="searchForm.visitorId"
           placeholder="访客 ID"

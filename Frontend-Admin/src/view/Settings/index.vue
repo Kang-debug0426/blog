@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import {
   getConfigList,
   createConfig,
@@ -13,6 +13,8 @@ import {
   sendCode
 } from '@/api/auth'
 import { useUserStore } from '@/stores'
+
+const userStore = useUserStore()
 
 /* ---- Tab ---- */
 const activeTab = ref('config')
@@ -29,6 +31,26 @@ const configForm = ref({
   description: ''
 })
 const configEditing = ref(false)
+
+/* boolean 类型时配置值用开关绑定，存 'true' / 'false' */
+const configBoolValue = computed({
+  get: () => configForm.value.configValue === 'true',
+  set: (val) => {
+    configForm.value.configValue = val ? 'true' : 'false'
+  }
+})
+
+watch(
+  () => configForm.value.configType,
+  (type) => {
+    if (
+      type === 'boolean' &&
+      !['true', 'false'].includes(configForm.value.configValue)
+    ) {
+      configForm.value.configValue = 'false'
+    }
+  }
+)
 
 const fetchConfigs = async () => {
   loadingConfig.value = true
@@ -85,7 +107,7 @@ const deleteConfig = async (row) => {
 }
 
 onMounted(() => {
-  fetchConfigs()
+  if (!userStore.isGuest) fetchConfigs()
 })
 
 /* ---- 账号安全 ---- */
@@ -349,7 +371,12 @@ const handleChangeEmail = async () => {
           />
         </el-form-item>
         <el-form-item label="配置值">
+          <el-switch
+            v-if="configForm.configType === 'boolean'"
+            v-model="configBoolValue"
+          />
           <el-input
+            v-else
             v-model="configForm.configValue"
             type="textarea"
             :rows="3"

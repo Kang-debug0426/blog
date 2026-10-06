@@ -1,12 +1,13 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useVisitorStore } from '@/stores'
+import { useVisitorStore, useUserStore } from '@/stores'
 import dayjs from 'dayjs'
 
 const visitorStore = useVisitorStore()
+const userStore = useUserStore()
 
 /* ---- 搜索 ---- */
-const searchForm = ref({ country: '', province: '', city: '', status: '' })
+const searchForm = ref({ country: '', province: '', city: '', ip: '', status: '' })
 const page = ref(1)
 const size = ref(15)
 const selected = ref([])
@@ -18,6 +19,7 @@ const load = () => {
     country: searchForm.value.country || undefined,
     province: searchForm.value.province || undefined,
     city: searchForm.value.city || undefined,
+    ip: searchForm.value.ip || undefined,
     status: searchForm.value.status === '' ? undefined : searchForm.value.status
   })
 }
@@ -28,7 +30,7 @@ const handleSearch = () => {
 }
 
 const handleReset = () => {
-  searchForm.value = { country: '', province: '', city: '', status: '' }
+  searchForm.value = { country: '', province: '', city: '', ip: '', status: '' }
   handleSearch()
 }
 
@@ -87,7 +89,9 @@ const batchUnblock = async () => {
 
 const fmtDate = (d) => (d ? dayjs(d).format('YYYY-MM-DD HH:mm') : '-')
 
-onMounted(load)
+onMounted(() => {
+  if (!userStore.isGuest) load()
+})
 </script>
 
 <template>
@@ -112,6 +116,13 @@ onMounted(load)
         <el-input
           v-model="searchForm.city"
           placeholder="搜索城市"
+          clearable
+          class="search-input"
+          @keyup.enter="handleSearch"
+        />
+        <el-input
+          v-model="searchForm.ip"
+          placeholder="IP 地址"
           clearable
           class="search-input"
           @keyup.enter="handleSearch"

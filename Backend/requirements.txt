@@ -1,0 +1,26 @@
+# IMCJK Personal Blog Backend (Python / FastAPI)
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+starlette>=0.40.0
+pydantic>=2.9.0
+pydantic-settings>=2.5.0
+
+# Database & ORM
+sqlalchemy>=2.0.36
+aiomysql>=0.2.0
+pymysql>=1.1.1
+greenlet>=3.1.0
+
+# Cache & HTTP Client
+redis>=5.2.0
+httpx>=0.27.2
+
+# Auth & Crypto
+pyjwt>=2.9.0
+argon2-cffi>=23.1.0
+python-multipart>=0.0.12
+pyyaml>=6.0.2
+
+# Object Storage & Utilities
+oss2>=2.19.1
+websockets>=13.1

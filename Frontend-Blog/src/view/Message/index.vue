@@ -51,7 +51,7 @@ const insertMsgEmoji = (char) => {
 }
 
 /* 验证码 */
-const captcha = ref({ question: '', result: null })
+const captcha = ref({ captchaId: '', question: '' })
 const captchaHover = ref(false)
 const captchaFocus = ref(false)
 const loadCaptcha = async () => {
@@ -77,12 +77,13 @@ const load = async () => {
 
 const handleSubmit = async () => {
   if (!form.value.nickname.trim()) return ElMessage.warning('请输入昵称')
+  if (!form.value.emailOrQq.trim()) return ElMessage.warning('请输入邮箱或QQ号')
   if (!form.value.content.trim()) return ElMessage.warning('请输入内容')
   // 新留言需要验证码
   if (!editTarget.value) {
     const answer = parseInt(form.value.captchaAnswer, 10)
-    if (isNaN(answer) || answer !== captcha.value.result) {
-      ElMessage.warning('验证码错误，请重新计算')
+    if (isNaN(answer)) {
+      ElMessage.warning('请输入正确的验证码')
       loadCaptcha()
       return
     }
@@ -90,26 +91,36 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     if (editTarget.value) {
-      await editMessage({
-        id: editTarget.value.id,
-        content: form.value.content,
-        visitorId: visitorStore.visitorId,
-        isMarkdown: form.value.isMarkdown ? 1 : 0
-      })
+      await editMessage(
+        {
+          id: editTarget.value.id,
+          content: form.value.content,
+          visitorId: visitorStore.visitorId,
+          isMarkdown: form.value.isMarkdown ? 1 : 0
+        },
+        visitorStore.visitorToken,
+        visitorStore.fingerprint
+      )
       ElMessage.success('修改成功')
     } else {
-      await submitMessage({
-        content: form.value.content,
-        rootId: replyTarget.value?.rootId || replyTarget.value?.id || null,
-        parentId: replyTarget.value?.id || null,
-        parentNickname: replyTarget.value?.nickname || null,
-        nickname: form.value.nickname,
-        emailOrQq: form.value.emailOrQq,
-        visitorId: visitorStore.visitorId,
-        isSecret: form.value.isSecret ? 1 : 0,
-        isNotice: form.value.isNotice ? 1 : 0,
-        isMarkdown: form.value.isMarkdown ? 1 : 0
-      })
+      await submitMessage(
+        {
+          content: form.value.content,
+          rootId: replyTarget.value?.rootId || replyTarget.value?.id || null,
+          parentId: replyTarget.value?.id || null,
+          parentNickname: replyTarget.value?.nickname || null,
+          nickname: form.value.nickname,
+          emailOrQq: form.value.emailOrQq,
+          visitorId: visitorStore.visitorId,
+          isSecret: form.value.isSecret ? 1 : 0,
+          isNotice: form.value.isNotice ? 1 : 0,
+          isMarkdown: form.value.isMarkdown ? 1 : 0,
+          captchaId: captcha.value.captchaId,
+          captchaAnswer: parseInt(form.value.captchaAnswer, 10)
+        },
+        visitorStore.visitorToken,
+        visitorStore.fingerprint
+      )
       ElMessage.success('留言成功，审核通过后将展示')
     }
     visitorStore.nickname = form.value.nickname
@@ -133,11 +144,15 @@ const handleDelete = async (msg) => {
     return // 用户取消
   }
   try {
-    await deleteMessage(msg.id, visitorStore.visitorId)
+    await deleteMessage(
+      msg.id,
+      visitorStore.visitorToken,
+      visitorStore.fingerprint
+    )
     ElMessage.success('已删除')
     await load()
-  } catch (e) {
-    ElMessage.error(e.response?.data?.msg || '删除失败')
+  } catch {
+    // 错误提示由响应拦截器统一处理
   }
 }
 
@@ -170,24 +185,17 @@ const resetForm = () => {
 const isMine = (msg) =>
   msg.visitorId && msg.visitorId === visitorStore.visitorId
 
-/* 头像 */
+/* 头像：博主回复用个人信息头像，其余用服务端下发的QQ头像（仅填QQ号或QQ邮箱的留言有值） */
 const getAvatarUrl = (msg) => {
-  // 如果是博主回复，使用个人信息的头像
   if (msg.isAdminReply && blogStore.personalInfo?.avatar) {
     return blogStore.personalInfo.avatar
   }
-  const eq = msg.emailOrQq
-  if (!eq) return ''
-  if (/^\d{5,11}$/.test(eq)) return `https://q1.qlogo.cn/g?b=qq&nk=${eq}&s=640`
-  const m = eq.match(/^(\d{5,11})@qq\.com$/i)
-  if (m) return `https://q1.qlogo.cn/g?b=qq&nk=${m[1]}&s=640`
-  return ''
+  return msg.avatar || ''
 }
 const getInitial = (name) => (name ? name.charAt(0).toUpperCase() : '?')
 
 const fmtDate = (d) => {
   if (!d) return ''
-  // 格式化为 YYYY-MM-DD HH:mm
   return d.slice(0, 16).replace('T', ' ')
 }
 
@@ -205,7 +213,7 @@ const totalCount = computed(() => {
 
 onMounted(() => {
   articleTitle.value = '留言板'
-  articleMeta.value = '说点什么吧'
+  articleMeta.value = ['说点什么吧']
   form.value.nickname = visitorStore.nickname || ''
   form.value.emailOrQq = visitorStore.email || ''
   load()
@@ -256,7 +264,7 @@ onMounted(() => {
               <input
                 v-model="form.emailOrQq"
                 type="text"
-                placeholder="邮箱/QQ号"
+                placeholder="邮箱/QQ号 *"
                 class="form-input"
                 :disabled="!!editTarget"
               />
@@ -353,7 +361,7 @@ onMounted(() => {
                     >
                       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
                       <circle cx="12" cy="10" r="3" /></svg
-                    >{{ msg.location || '未知' }}</span
+                    >{{ msg.location }}</span
                   >
                   <span class="msg-meta-item"
                     ><svg
@@ -448,7 +456,7 @@ onMounted(() => {
                               d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"
                             />
                             <circle cx="12" cy="10" r="3" /></svg
-                          >{{ child.location || '未知' }}</span
+                          >{{ child.location }}</span
                         >
                         <span class="msg-meta-item"
                           ><svg
@@ -940,12 +948,22 @@ onMounted(() => {
 .placeholder {
   padding: 20px 0;
 }
+@keyframes sk-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
 .sk-line {
   height: 14px;
-  background: #ebeef5;
   border-radius: 4px;
   margin-bottom: 12px;
   width: 60%;
+  background: linear-gradient(90deg, #ebeef5 25%, #f5f7fa 50%, #ebeef5 75%);
+  background-size: 200% 100%;
+  animation: sk-shimmer 1.5s ease-in-out infinite;
 }
 .empty {
   text-align: center;

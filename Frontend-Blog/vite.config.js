@@ -15,7 +15,8 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:5922',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '')
+        rewrite: (path) => path.replace(/^\/api/, ''),
+        ws: true
       }
     }
   },
@@ -70,6 +71,9 @@ export default defineConfig({
           if (id.includes('node_modules')) {
             if (id.includes('element-plus')) {
               return 'element'
+            }
+            if (id.includes('echarts') || id.includes('zrender')) {
+              return 'echarts'
             }
             if (
               id.includes('md-editor-v3') ||

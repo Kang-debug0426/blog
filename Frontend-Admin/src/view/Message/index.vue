@@ -1,9 +1,11 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useMessageStore } from '@/stores'
+import { ref, onMounted, nextTick } from 'vue'
+import { useMessageStore, useUserStore } from '@/stores'
 import dayjs from 'dayjs'
+import EmojiPicker from '@/components/EmojiPicker.vue'
 
 const messageStore = useMessageStore()
+const userStore = useUserStore()
 
 const filterStatus = ref('')
 const page = ref(1)
@@ -68,8 +70,8 @@ const deleteOne = async (row) => {
     await messageStore.remove([row.id])
     ElMessage.success('删除成功')
     load()
-  } catch (e) {
-    ElMessage.error(e.response?.data?.msg || '删除失败')
+  } catch {
+    // 错误提示由响应拦截器统一处理
   }
 }
 
@@ -88,8 +90,8 @@ const batchDelete = async () => {
     await messageStore.remove(selected.value.map((r) => r.id))
     ElMessage.success('批量删除成功')
     load()
-  } catch (e) {
-    ElMessage.error(e.response?.data?.msg || '批量删除失败')
+  } catch {
+    // 错误提示由响应拦截器统一处理
   }
 }
 
@@ -107,11 +109,29 @@ const replyVisible = ref(false)
 /** @type {import('vue').Ref<Object|null>} */
 const replyTarget = ref(null)
 const replyContent = ref('')
+const replyInputRef = ref(null)
 
 const openReply = (row) => {
   replyTarget.value = row
   replyContent.value = ''
   replyVisible.value = true
+}
+
+const insertReplyEmoji = (char) => {
+  const textarea = replyInputRef.value?.textarea
+  if (!textarea) {
+    replyContent.value += char
+    return
+  }
+  const start = textarea.selectionStart ?? replyContent.value.length
+  const end = textarea.selectionEnd ?? replyContent.value.length
+  const val = replyContent.value
+  replyContent.value = val.slice(0, start) + char + val.slice(end)
+  nextTick(() => {
+    const pos = start + char.length
+    textarea.setSelectionRange(pos, pos)
+    textarea.focus()
+  })
 }
 
 const submitReply = async () => {
@@ -132,7 +152,9 @@ const submitReply = async () => {
 /** 格式化时间 */
 const fmtDate = (d) => (d ? dayjs(d).format('YYYY-MM-DD HH:mm') : '-')
 
-onMounted(load)
+onMounted(() => {
+  if (!userStore.isGuest) load()
+})
 </script>
 
 <template>
@@ -168,7 +190,8 @@ onMounted(load)
         <el-table-column type="selection" width="48" />
         <el-table-column label="留言内容" min-width="280" show-overflow-tooltip>
           <template #default="{ row }">
-            <div class="msg-content" v-html="row.contentHtml || row.content" />
+            <div v-if="row.contentHtml" class="msg-content" v-html="row.contentHtml" />
+            <div v-else class="msg-content">{{ row.content }}</div>
           </template>
         </el-table-column>
         <el-table-column prop="nickname" label="昵称" width="110" />
@@ -256,7 +279,8 @@ onMounted(load)
           fmtDate(detailRow.createTime)
         }}</el-descriptions-item>
         <el-descriptions-item label="留言内容" :span="2">
-          <div v-html="detailRow.contentHtml || detailRow.content || '-'" />
+          <div v-if="detailRow.contentHtml" v-html="detailRow.contentHtml" />
+          <div v-else>{{ detailRow.content || '-' }}</div>
         </el-descriptions-item>
       </el-descriptions>
       <template #footer>
@@ -276,12 +300,16 @@ onMounted(load)
         {{ replyTarget.content }}
       </div>
       <el-input
+        ref="replyInputRef"
         v-model="replyContent"
         type="textarea"
         :rows="4"
         placeholder="输入回复内容…"
         style="margin-top: 14px"
       />
+      <div class="reply-tools">
+        <EmojiPicker @select="insertReplyEmoji" />
+      </div>
       <template #footer>
         <el-button @click="replyVisible = false">取消</el-button>
         <el-button type="primary" @click="submitReply">发送回复</el-button>
@@ -357,5 +385,11 @@ onMounted(load)
 .reply-author {
   font-weight: 600;
   color: #303133;
+}
+
+.reply-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 </style>

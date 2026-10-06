@@ -10,7 +10,7 @@ const info = computed(() => blogStore.personalInfo)
 
 onMounted(() => {
   articleTitle.value = '关于'
-  articleMeta.value = '关于我和这个博客'
+  articleMeta.value = ['关于我和这个博客']
 })
 </script>
 
@@ -111,6 +111,10 @@ onMounted(() => {
               <div class="contact-item">
                 <span class="contact-label">QQ</span>
                 <span class="contact-value">822824739</span>
+              </div>
+              <div class="contact-item">
+                <span class="contact-label">交流群</span>
+                <span class="contact-value">1104658479</span>
               </div>
               <div v-if="info.email" class="contact-item">
                 <span class="contact-label">邮箱</span>
