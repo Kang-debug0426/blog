@@ -1,12 +1,12 @@
-import { API_BASE_URL } from './config';
-import { getToken } from './storage';
+import { API_BASE_URL, normalizeApiUrl } from './config';
+import { getServerUrl, getToken } from './storage';
 import { Platform } from 'react-native';
 
 /**
  * 客户端标识头：后端据此区分请求来自浏览器管理端还是移动端 App。
  * App 环境没有浏览器 User-Agent，后端可读取这些头来记录设备信息（如站长回复的来源）。
  */
-const CLIENT_TYPE = 'feitwnd-app';
+const CLIENT_TYPE = 'kang-blog-app';
 const CLIENT_OS = Platform.OS === 'ios' ? 'iOS' : 'Android';
 
 const REQUEST_TIMEOUT_MS = 15000;
@@ -49,10 +49,12 @@ async function fetchWithTimeout(input: string, init: RequestInit): Promise<Respo
 
 export async function api<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = await getToken();
+  const customUrl = await getServerUrl();
+  const baseUrl = customUrl ? normalizeApiUrl(customUrl) : API_BASE_URL;
 
-  // API_BASE_URL 可能带路径前缀（如 /wo/chovy，由 nginx 剥离后转发）。
-  // 用字符串拼接保留前缀；不能用 new URL(path, base)——绝对路径会替换掉 base 的路径段。
-  let url = API_BASE_URL + path;
+  // 保证路径拼接规范，若 baseUrl 已含 /api 且 path 重复 /api 则自动去重
+  const cleanPath = path.startsWith('/api/') ? path.replace(/^\/api/, '') : path;
+  let url = baseUrl + cleanPath;
   if (options.query) {
     const pairs = Object.entries(options.query)
       .filter(([, v]) => v !== undefined)

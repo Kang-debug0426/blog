@@ -59,8 +59,15 @@ class MessageDTO(BaseModel):
     update_time: Optional[datetime.datetime|None] = Field(default=None, alias='updateTime')
 
 class MessageReplyDTO(BaseModel):
+    """站长回复留言入参。
+
+    【兼容性】``rootId`` / ``parentNickname`` 由移动端 App 与新版管理端一并提交，
+    用于两级树状盖楼定位；缺省时行为与旧版完全一致（保持向后兼容）。
+    """
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
     parent_id: Optional[int] = Field(default=None, alias='parentId')
+    root_id: Optional[int] = Field(default=None, alias='rootId')
+    parent_nickname: Optional[str] = Field(default=None, alias='parentNickname')
     content: str
 
 class MessageEditDTO(BaseModel):
@@ -123,8 +130,15 @@ class ArticleCommentDTO(BaseModel):
     update_time: Optional[datetime.datetime|None] = Field(default=None, alias='updateTime')
 
 class ArticleCommentReplyDTO(BaseModel):
+    """站长回复文章评论入参。
+
+    【兼容性】``rootId`` / ``parentNickname`` 由移动端 App 与新版管理端一并提交，
+    用于两级树状盖楼定位；缺省时行为与旧版完全一致（保持向后兼容）。
+    """
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)
     parent_id: Optional[int] = Field(default=None, alias='parentId')
+    root_id: Optional[int] = Field(default=None, alias='rootId')
+    parent_nickname: Optional[str] = Field(default=None, alias='parentNickname')
     content: str
     article_id: Optional[int] = Field(default=None, alias='articleId')
 

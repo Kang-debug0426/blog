@@ -1,8 +1,9 @@
 import * as SecureStore from 'expo-secure-store'
 import { Platform } from 'react-native'
 
-const TOKEN_KEY = 'feitwnd_admin_token'
-const ADMIN_ID_KEY = 'feitwnd_admin_id'
+const TOKEN_KEY = 'kang_admin_token'
+const ADMIN_ID_KEY = 'kang_admin_id'
+const SERVER_URL_KEY = 'kang_admin_server_url'
 
 // SecureStore 不支持 Web，Web 上用 localStorage 兜底
 const webStorage =
@@ -50,4 +51,12 @@ export async function setAdminId(id: number): Promise<void> {
 export async function clearSession(): Promise<void> {
   await deleteItem(TOKEN_KEY)
   await deleteItem(ADMIN_ID_KEY)
+}
+
+export async function getServerUrl(): Promise<string | null> {
+  return getItem(SERVER_URL_KEY)
+}
+
+export async function setServerUrl(url: string): Promise<void> {
+  await setItem(SERVER_URL_KEY, url)
 }

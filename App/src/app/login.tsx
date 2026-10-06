@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import {
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -17,20 +18,36 @@ import { Btn, DANGER, Input, useColors } from '@/components/ui'
 import { ThemedText } from '@/components/themed-text'
 import { ThemedView } from '@/components/themed-view'
 import { Spacing } from '@/constants/theme'
-import { API_BASE_URL } from '@/lib/config'
+import { DEFAULT_PROD_URL, DEFAULT_STAGING_URL, normalizeApiUrl } from '@/lib/config'
 import { ApiError } from '@/lib/api-client'
 import { setSession, useSession } from '@/lib/session'
-import { clearSession, setAdminId, setToken } from '@/lib/storage'
+import { clearSession, getServerUrl, setAdminId, setServerUrl, setToken } from '@/lib/storage'
 
 export default function LoginScreen() {
   const theme = useColors()
   const session = useSession()
-  const [username, setUsername] = useState('')
+  const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [countdown, setCountdown] = useState(0)
+
+  // 服务器配置状态
+  const [currentServer, setCurrentServer] = useState(DEFAULT_PROD_URL)
+  const [showServerModal, setShowServerModal] = useState(false)
+  const [customServerInput, setCustomServerInput] = useState('')
+
+  useEffect(() => {
+    getServerUrl().then((saved) => {
+      if (saved) {
+        setCurrentServer(saved)
+        setCustomServerInput(saved)
+      } else {
+        setCustomServerInput(DEFAULT_PROD_URL)
+      }
+    })
+  }, [])
 
   useEffect(() => {
     if (countdown <= 0) return
@@ -42,6 +59,15 @@ export default function LoginScreen() {
     return <Redirect href="/" />
   }
 
+  const handleSelectServer = async (url: string) => {
+    const normalized = normalizeApiUrl(url)
+    await setServerUrl(normalized)
+    setCurrentServer(normalized)
+    setCustomServerInput(normalized)
+    setShowServerModal(false)
+    Alert.alert('切换成功', `当前服务器已切换为：\n${normalized}`)
+  }
+
   const onSendCode = async () => {
     if (!username.trim()) {
       Alert.alert('提示', '请先输入用户名')
@@ -50,12 +76,12 @@ export default function LoginScreen() {
     setSending(true)
     try {
       await authApi.sendCode(username.trim())
-      Alert.alert('已发送', '验证码已发送至管理员邮箱')
+      Alert.alert('已发送', '验证码已发送至管理员邮箱（测试环境可直接使用 888888）')
       setCountdown(60)
     } catch (e) {
       Alert.alert(
         '发送失败',
-        e instanceof ApiError ? e.message : '网络错误，请稍后重试',
+        e instanceof ApiError ? e.message : '网络错误，请检查服务器连接',
       )
     } finally {
       setSending(false)
@@ -86,7 +112,7 @@ export default function LoginScreen() {
     } catch (e) {
       Alert.alert(
         '登录失败',
-        e instanceof ApiError ? e.message : '网络错误，请检查服务器地址',
+        e instanceof ApiError ? e.message : '网络错误，请检查服务器地址与网络连接',
       )
     } finally {
       setLoading(false)
@@ -100,38 +126,45 @@ export default function LoginScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.safeArea}
         >
-          {/* 键盘弹出时可滚动，配合下方 maxHeight 保证输入框不被遮挡 */}
           <ScrollView
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
+            {/* 品牌 Logo 与标题 */}
             <View style={styles.brandArea}>
               <ThemedText type="title" style={styles.brand}>
-                FeiTwnd
+                Kang's Blog
               </ThemedText>
               <ThemedText type="smallBold" themeColor="textSecondary">
-                个人博客管理后台
+                个人博客移动管理后台
               </ThemedText>
               <ThemedText
                 type="small"
                 themeColor="textSecondary"
                 style={styles.slogan}
               >
-                内容审核 · 文章管理 · 数据看板
+                内容审核 · 文章管理 · 城市足迹 · 数据看板
               </ThemedText>
             </View>
 
             <View style={styles.formArea}>
-              {/* env 未注入时提示，避免请求全部静默失败；配置方法见 lib/config.ts */}
-              {!API_BASE_URL && (
-                <ThemedText
-                  type="small"
-                  style={{ color: DANGER, textAlign: 'center', marginBottom: Spacing.two }}>
-                  服务器地址未配置：请检查 EXPO_PUBLIC_API_URL（本地开发改 .env，EAS 构建用
-                  npx eas-cli env:set 配置）
+              {/* 当前连接的服务器指示条 */}
+              <Pressable
+                style={[
+                  styles.serverBadge,
+                  { backgroundColor: theme.backgroundElement },
+                ]}
+                onPress={() => setShowServerModal(true)}
+              >
+                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                  🌐 当前服务器: {currentServer}
                 </ThemedText>
-              )}
+                <ThemedText type="smallBold" style={{ color: theme.text }}>
+                  [切换]
+                </ThemedText>
+              </Pressable>
+
               <ThemedView type="backgroundElement" style={styles.form}>
                 <Input
                   label="用户名"
@@ -149,7 +182,7 @@ export default function LoginScreen() {
                 />
                 <Input
                   label="验证码"
-                  placeholder="邮箱收到的验证码"
+                  placeholder="邮箱验证码（测试可用 888888）"
                   keyboardType="number-pad"
                   value={code}
                   onChangeText={setCode}
@@ -167,11 +200,67 @@ export default function LoginScreen() {
                     {countdown > 0 ? `${countdown}s 后重试` : '获取验证码'}
                   </Text>
                 </Pressable>
-                <Btn label="登录" onPress={onLogin} loading={loading} />
+                <Btn label="登录管理后台" onPress={onLogin} loading={loading} />
               </ThemedView>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
+
+        {/* 切换服务器模态弹窗 */}
+        <Modal visible={showServerModal} transparent animationType="fade">
+          <Pressable
+            style={styles.modalMask}
+            onPress={() => setShowServerModal(false)}
+          >
+            <Pressable
+              style={[
+                styles.modalCard,
+                { backgroundColor: theme.background },
+              ]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <ThemedText type="subtitle" style={{ marginBottom: Spacing.two }}>
+                选择连接服务器
+              </ThemedText>
+              
+              <Btn
+                label="🚀 阿里云正式生产 (admin.imcjk.top)"
+                variant="ghost"
+                onPress={() => handleSelectServer(DEFAULT_PROD_URL)}
+                style={styles.modalBtn}
+              />
+              
+              <Btn
+                label="🧪 腾讯云测试环境 (:8081)"
+                variant="ghost"
+                onPress={() => handleSelectServer(DEFAULT_STAGING_URL)}
+                style={styles.modalBtn}
+              />
+
+              <Input
+                label="自定义服务器地址"
+                placeholder="http://192.168.x.x:8081"
+                value={customServerInput}
+                onChangeText={setCustomServerInput}
+                style={{ marginTop: Spacing.two }}
+              />
+
+              <View style={styles.modalRow}>
+                <Btn
+                  label="取消"
+                  variant="ghost"
+                  onPress={() => setShowServerModal(false)}
+                  style={{ flex: 1 }}
+                />
+                <Btn
+                  label="保存并连接"
+                  onPress={() => handleSelectServer(customServerInput)}
+                  style={{ flex: 1 }}
+                />
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </SafeAreaView>
     </ThemedView>
   )
@@ -186,22 +275,32 @@ const styles = StyleSheet.create({
   },
   brandArea: {
     flex: 1,
-    // 限制品牌区高度，让表单整体上移，避免输入法弹出时遮挡输入框
-    maxHeight: '35%',
+    maxHeight: '32%',
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.two,
     paddingHorizontal: Spacing.four,
   },
   brand: {
-    fontSize: 44,
-    lineHeight: 52,
+    fontSize: 40,
+    lineHeight: 48,
+    fontWeight: '800',
   },
   slogan: {
     marginTop: Spacing.one,
   },
   formArea: {
     paddingHorizontal: Spacing.three,
+  },
+  serverBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.two,
+    marginBottom: Spacing.two,
+    gap: Spacing.two,
   },
   form: {
     borderRadius: Spacing.three,
@@ -216,5 +315,27 @@ const styles = StyleSheet.create({
   codeBtnText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  modalMask: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.four,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: Spacing.three,
+    padding: Spacing.four,
+    gap: Spacing.two,
+  },
+  modalBtn: {
+    marginVertical: 4,
+  },
+  modalRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    marginTop: Spacing.three,
   },
 })

@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "FeiTwnd-App",
-    "slug": "FeiTwnd-App",
+    "name": "Kang Blog Admin",
+    "slug": "kang-blog-admin",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "feitwndapp",
+    "scheme": "kangadmin",
     "userInterfaceStyle": "automatic",
     "android": {
-      "package": "cc.feitwnd.app",
+      "package": "top.imcjk.admin",
       "backgroundColor": "#f5f7fa",
       "predictiveBackGestureEnabled": false
     },

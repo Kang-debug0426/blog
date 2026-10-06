@@ -4,6 +4,32 @@ from .schemas import *
 
 logger = get_logger(__name__)
 
+
+def _client_device_info(request: object) -> dict:
+    """提取站长回复时所使用的客户端设备信息。
+
+    【设计】移动端 App 没有浏览器 User-Agent，因此会显式发送
+    ``X-Client-Type``（kang-blog-app）与 ``X-Client-OS``（Android / iOS）标头；
+    浏览器管理端则回退到真实 User-Agent 解析结果。二者统一落到
+    ``user_agent_os`` / ``user_agent_browser`` 字段，便于后台区分回复来源。
+    """
+    try:
+        headers = getattr(request, "headers", None)
+        if headers is None:
+            return {}
+        client_type = (headers.get("X-Client-Type") or "").strip()
+        client_os = (headers.get("X-Client-OS") or "").strip()
+        ua = (headers.get("User-Agent") or "Admin Console").strip()
+        if client_type:
+            return {
+                "user_agent_os": client_os or "Mobile",
+                "user_agent_browser": f"{client_type} ({client_os or 'Mobile'})",
+            }
+        return {"user_agent_os": None, "user_agent_browser": ua[:100] if ua else None}
+    except Exception:
+        return {}
+
+
 class CommentsService:
     def __init__(self, repo: CommentsRepository):
         self._repo = repo
@@ -33,6 +59,9 @@ class CommentsService:
         data['is_admin_reply'] = 1
         data['nickname'] = 'Admin'
         data['is_approved'] = 1
+        if not data.get('content_html'):
+            data['content_html'] = f"<p>{data.get('content', '')}</p>"
+        data.update(_client_device_info(request))
         await self._repo.insert_message(data)
 
     async def edit_message(self, dto: MessageEditDTO) -> None:
@@ -76,6 +105,7 @@ class CommentsService:
         data['is_approved'] = 1
         if not data.get('content_html'):
             data['content_html'] = f"<p>{data.get('content', '')}</p>"
+        data.update(_client_device_info(request))
         await self._repo.insert_articlecomment(data)
 
     async def edit_articlecomment(self, dto: ArticleCommentEditDTO) -> None:

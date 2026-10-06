@@ -1,6 +1,6 @@
 import { ApiError } from '@/lib/api-client';
-import { API_BASE_URL } from '@/lib/config';
-import { getToken } from '@/lib/storage';
+import { API_BASE_URL, normalizeApiUrl } from '@/lib/config';
+import { getServerUrl, getToken } from '@/lib/storage';
 
 /**
  * 上传图片到 OSS（multipart/form-data），返回图片 URL。
@@ -13,12 +13,14 @@ export async function uploadImage(
   mime = 'image/jpeg'
 ): Promise<string> {
   const token = await getToken();
+  const customUrl = await getServerUrl();
+  const baseUrl = customUrl ? normalizeApiUrl(customUrl) : API_BASE_URL;
 
   const form = new FormData();
   // React Native 的 FormData 用 { uri, name, type } 描述本地文件
   form.append('file', { uri, name, type: mime } as unknown as Blob);
 
-  const response = await fetch(`${API_BASE_URL}/admin/common/upload`, {
+  const response = await fetch(`${baseUrl}/admin/common/upload`, {
     method: 'POST',
     headers: token ? { Authorization: token } : undefined,
     body: form,

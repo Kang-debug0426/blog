@@ -1,5 +1,5 @@
 {
-  "name": "feitwnd-app",
+  "name": "kang-blog-admin",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {

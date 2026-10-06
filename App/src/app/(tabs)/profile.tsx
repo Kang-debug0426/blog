@@ -1,6 +1,6 @@
 import { router, type Href } from 'expo-router'
 import { useEffect, useState } from 'react'
-import { Alert, Modal, Pressable, StyleSheet, View } from 'react-native'
+import { Alert, Linking, Modal, Pressable, StyleSheet, View } from 'react-native'
 
 import { changeNickname, changePassword, getProfile, logout } from '@/api/auth'
 import { ThemedText } from '@/components/themed-text'
@@ -15,7 +15,8 @@ import {
 import { Spacing } from '@/constants/theme'
 import { ApiError } from '@/lib/api-client'
 import { setSession } from '@/lib/session'
-import { clearSession, getAdminId, getToken } from '@/lib/storage'
+import { clearSession, getAdminId, getServerUrl, getToken } from '@/lib/storage'
+import { DEFAULT_PROD_URL } from '@/lib/config'
 import type { AdminVO } from '@/lib/types'
 
 const MENU: { title: string; items: { label: string; route: Href }[] }[] = [
@@ -67,8 +68,12 @@ export default function ProfileScreen() {
   const [confirmPwd, setConfirmPwd] = useState('')
   const [nickname, setNickname] = useState('')
   const [saving, setSaving] = useState(false)
+  const [serverUrl, setServerUrlState] = useState(DEFAULT_PROD_URL)
 
   useEffect(() => {
+    getServerUrl().then((url) => {
+      if (url) setServerUrlState(url)
+    })
     getProfile()
       .then((p) => {
         setProfile(p)
@@ -189,6 +194,45 @@ export default function ProfileScreen() {
         </View>
       ))}
 
+      {/* 站点前台直达与外部导航 */}
+      <View style={styles.group}>
+        <SectionTitle>前台站点直达</SectionTitle>
+        <Card>
+          <MenuRow
+            label="🌐 博客前台 (blog.imcjk.top)"
+            onPress={() => Linking.openURL('https://blog.imcjk.top')}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.backgroundSelected }]} />
+          <MenuRow
+            label="🏠 门户主站 (imcjk.top)"
+            onPress={() => Linking.openURL('https://imcjk.top')}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.backgroundSelected }]} />
+          <MenuRow
+            label="📄 在线简历 (cv.imcjk.top)"
+            onPress={() => Linking.openURL('https://cv.imcjk.top')}
+          />
+        </Card>
+      </View>
+
+      {/* 运行环境与版本信息 */}
+      <View style={styles.group}>
+        <SectionTitle>关于与环境</SectionTitle>
+        <Card>
+          <View style={styles.metaRow}>
+            <ThemedText type="small" themeColor="textSecondary">应用版本</ThemedText>
+            <ThemedText type="smallBold">Kang Blog Admin v1.0.0</ThemedText>
+          </View>
+          <View style={[styles.divider, { backgroundColor: theme.backgroundSelected, marginVertical: Spacing.two }]} />
+          <View style={styles.metaRow}>
+            <ThemedText type="small" themeColor="textSecondary">当前接口</ThemedText>
+            <ThemedText type="small" numberOfLines={1} style={{ maxWidth: '65%' }}>
+              {serverUrl}
+            </ThemedText>
+          </View>
+        </Card>
+      </View>
+
       <Btn
         label="退出登录"
         variant="danger"
@@ -284,6 +328,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: Spacing.three,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.two,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
