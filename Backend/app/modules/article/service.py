@@ -1,3 +1,4 @@
+import datetime
 from app.core.logging import get_logger
 from .repository import ArticleRepository
 from .schemas import *
@@ -53,21 +54,51 @@ class ArticleService:
 
     async def get_by_id(self, id: int) -> ArticleEntity | None:
         r = await self._repo.get_article_by_id(id)
-        return ArticleEntity.model_validate(r) if r else None
+        if not r:
+            return None
+        ent = ArticleEntity.model_validate(r)
+        ent.tag_ids = await self._repo.get_tag_ids_by_article_id(id)
+        return ent
 
     async def create_article(self, dto: ArticleDTO) -> None:
         data = dto.model_dump(exclude_none=True, exclude={'tag_id_list'})
-        # We don't implement full tag relations in contract testing mock unless requested
-        r = await self._repo.insert_article(data)
+        now = datetime.datetime.now()
+        if not data.get('create_time'):
+            data['create_time'] = now
+        data['update_time'] = now
+        if data.get('is_published') == 1 and not data.get('publish_time'):
+            data['publish_time'] = now
+        article = await self._repo.insert_article(data)
+        if dto.tag_id_list:
+            await self._repo.batch_insert_article_tag_relations(article.id, dto.tag_id_list)
 
     async def update_article(self, dto: ArticleDTO) -> None:
         data = dto.model_dump(exclude_unset=True, exclude={'tag_id_list'})
+        if not data.get('id'):
+            return
+        data['update_time'] = datetime.datetime.now()
+        if data.get('is_published') == 1:
+            existing = await self._repo.get_article_by_id(data['id'])
+            if existing and not existing.publish_time and not data.get('publish_time'):
+                data['publish_time'] = datetime.datetime.now()
         await self._repo.update_article(data)
+        if dto.tag_id_list is not None:
+            await self._repo.delete_article_tag_relations_by_article_id(data['id'])
+            if dto.tag_id_list:
+                await self._repo.batch_insert_article_tag_relations(data['id'], dto.tag_id_list)
 
     async def batch_delete_article(self, ids: list[int]) -> None:
+        if not ids:
+            return
+        await self._repo.batch_delete_article_tag_relations_by_article_ids(ids)
         await self._repo.batch_delete_article(ids)
 
     async def publish_or_cancel(self, id: int, is_published: int) -> None:
+        if is_published == 1:
+            existing = await self._repo.get_article_by_id(id)
+            if existing and not existing.publish_time:
+                await self._repo.update_article({'id': id, 'is_published': is_published, 'publish_time': datetime.datetime.now()})
+                return
         await self._repo.publish_or_cancel(id, is_published)
 
     async def toggle_top(self, id: int, is_top: int) -> None:
@@ -101,7 +132,18 @@ class ArticleService:
 
     async def get_by_slug(self, slug: str) -> BlogArticleDetailVO | None:
         r = await self._repo.get_article_by_slug(slug)
-        return BlogArticleDetailVO.model_validate(r) if r else None
+        if not r:
+            return None
+        ent = BlogArticleDetailVO.model_validate(r)
+        if r.category_id:
+            cats = await self._repo.get_all_articlecategory()
+            cat_map = {c.id: c.name for c in cats} if cats else {}
+            if r.category_id in cat_map:
+                ent.category_name = cat_map[r.category_id]
+        tags = await self._repo.get_tags_by_article_id(r.id)
+        if tags:
+            ent.tag_names = [t.name for t in tags if t and hasattr(t, 'name')]
+        return ent
 
     async def increment_view_count(self, id: int) -> None:
         await self._repo.increment_view_count(id)

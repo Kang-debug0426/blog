@@ -3,7 +3,7 @@ from fastapi.responses import PlainTextResponse
 from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, insert
-from app.core.deps import get_db_session
+from app.core.deps import get_db_session, get_current_admin, CurrentAdmin
 from app.core.errors import Envelope
 from app.db.models.article import Article
 from app.db.models.engagement import ArticleLike
@@ -14,6 +14,11 @@ router = APIRouter(tags=["misc"])
 @router.get("/health", response_model=Envelope, tags=["health"])
 async def health():
     return Envelope(data="Server is running")
+
+# ======== AI Status (Fallback) ========
+@router.get("/admin/ai/status", response_model=Envelope, tags=["ai"])
+async def get_ai_status(_: Annotated[CurrentAdmin, Depends(get_current_admin)]):
+    return Envelope(data={"enabled": False, "modelName": ""})
 
 # ======== Sitemap ========
 @router.get("/blog/sitemap.xml", response_class=PlainTextResponse, tags=["sitemap"])

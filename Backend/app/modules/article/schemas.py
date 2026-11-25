@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, AliasChoices
 from app.core.query import LenientQueryModel
 from typing import Optional, List, Any
 import datetime
@@ -60,6 +60,7 @@ class ArticleEntity(BaseModel):
     category_id: Optional[int|None] = Field(default=None, alias='categoryId')
     category_name: Optional[str|None] = Field(default=None, alias='categoryName')
     tag_names: Optional[List[str]] = Field(default_factory=list, alias='tagNames')
+    tag_ids: Optional[List[int]] = Field(default_factory=list, alias='tagIds')
     view_count: Optional[int|None] = Field(default=0, alias='viewCount')
     like_count: Optional[int|None] = Field(default=0, alias='likeCount')
     comment_count: Optional[int|None] = Field(default=0, alias='commentCount')
@@ -99,7 +100,11 @@ class ArticleDTO(BaseModel):
     publish_date: Optional[str|None] = Field(default=None, alias='publishDate')
     create_time: Optional[datetime.datetime|None] = Field(default=None, alias='createTime')
     update_time: Optional[datetime.datetime|None] = Field(default=None, alias='updateTime')
-    tag_id_list: Optional[List[int]] = Field(default=None, alias='tagIdList')
+    tag_id_list: Optional[List[int]] = Field(
+        default=None,
+        validation_alias=AliasChoices('tagIds', 'tagIdList'),
+        serialization_alias='tagIds'
+    )
 
 class ArticlePageQueryDTO(LenientQueryModel):
     model_config = ConfigDict(populate_by_name=True, from_attributes=True)

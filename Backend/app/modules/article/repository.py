@@ -58,7 +58,9 @@ class ArticleRepository:
         await self._s.execute(stmt)
         
     async def get_article_by_slug(self, slug: str) -> Article | None:
-        stmt = select(Article).where(Article.slug == slug)
+        # 【FACT】旧 Java get_by_slug SQL: where a.slug = #{slug} and a.is_published = 1
+        # 草稿/撤回的文章不得被公开详情接口读到
+        stmt = select(Article).where(Article.slug == slug, Article.is_published == 1)
         return (await self._s.execute(stmt)).scalars().first()
 
     async def page_article(self, page: int, size: int, title: str|None, category_id: int|None, is_published: int|None=None) -> tuple[int, Sequence[Article]]:
@@ -74,7 +76,15 @@ class ArticleRepository:
             stmt = stmt.where(Article.is_published == is_published)
             c_stmt = c_stmt.where(Article.is_published == is_published)
         total = (await self._s.execute(c_stmt)).scalar() or 0
-        records = (await self._s.execute(stmt.limit(size).offset((page-1)*size).order_by(Article.is_top.desc(), Article.create_time.desc()))).scalars().all()
+        records = (await self._s.execute(
+            stmt.limit(size)
+            .offset((page - 1) * size)
+            .order_by(
+                Article.is_top.desc(),
+                func.coalesce(Article.publish_time, Article.create_time).desc(),
+                Article.id.desc(),
+            )
+        )).scalars().all()
         return total, records
 
     async def increment_view_count(self, id: int) -> None:
@@ -92,16 +102,31 @@ class ArticleRepository:
     async def get_published_by_tag_id(self, tag_id: int, page: int, size: int) -> tuple[int, Sequence[Article]]:
         stmt = select(Article).join(ArticleTagRelation, Article.id == ArticleTagRelation.article_id).where(
             ArticleTagRelation.tag_id == tag_id, Article.is_published == 1
-        ).order_by(Article.create_time.desc())
+        )
         c_stmt = select(func.count(Article.id)).join(ArticleTagRelation, Article.id == ArticleTagRelation.article_id).where(
             ArticleTagRelation.tag_id == tag_id, Article.is_published == 1
         )
         total = (await self._s.execute(c_stmt)).scalar() or 0
-        records = (await self._s.execute(stmt.limit(size).offset((page-1)*size))).scalars().all()
+        records = (await self._s.execute(
+            stmt.limit(size)
+            .offset((page - 1) * size)
+            .order_by(
+                Article.is_top.desc(),
+                func.coalesce(Article.publish_time, Article.create_time).desc(),
+                Article.id.desc(),
+            )
+        )).scalars().all()
         return total, records
         
     async def get_archive(self) -> Sequence[Article]:
-        stmt = select(Article).where(Article.is_published == 1).order_by(Article.create_time.desc())
+        stmt = (
+            select(Article)
+            .where(Article.is_published == 1)
+            .order_by(
+                func.coalesce(Article.publish_time, Article.create_time).desc(),
+                Article.id.desc(),
+            )
+        )
         return (await self._s.execute(stmt)).scalars().all()
 
     async def get_tags_by_article_id(self, article_id: int) -> Sequence[ArticleTag]:
@@ -109,4 +134,23 @@ class ArticleRepository:
             ArticleTagRelation.article_id == article_id
         )
         return (await self._s.execute(stmt)).scalars().all()
-        return (await self._s.execute(stmt)).scalars().all()
+
+    async def get_tag_ids_by_article_id(self, article_id: int) -> list[int]:
+        stmt = select(ArticleTagRelation.tag_id).where(ArticleTagRelation.article_id == article_id)
+        return list((await self._s.execute(stmt)).scalars().all())
+
+    async def batch_insert_article_tag_relations(self, article_id: int, tag_ids: list[int]) -> None:
+        if not tag_ids:
+            return
+        values = [{"article_id": article_id, "tag_id": tid} for tid in tag_ids]
+        await self._s.execute(insert(ArticleTagRelation), values)
+
+    async def delete_article_tag_relations_by_article_id(self, article_id: int) -> None:
+        stmt = delete(ArticleTagRelation).where(ArticleTagRelation.article_id == article_id)
+        await self._s.execute(stmt)
+
+    async def batch_delete_article_tag_relations_by_article_ids(self, article_ids: list[int]) -> None:
+        if not article_ids:
+            return
+        stmt = delete(ArticleTagRelation).where(ArticleTagRelation.article_id.in_(article_ids))
+        await self._s.execute(stmt)

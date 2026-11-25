@@ -75,6 +75,30 @@ async def search_admin(_: AdminDep, svc: SvcDep, keyword: str = "", page: PageNu
 @admin_router.get("/article/{id}", response_model=Envelope)
 async def get_by_id(_: AdminDep, svc: SvcDep, id: int):
     return Envelope(data=await svc.get_by_id(id))
+@admin_router.post("/article", response_model=Envelope)
+async def create_article(_: AdminDep, svc: SvcDep, dto: ArticleDTO):
+    await svc.create_article(dto)
+    return Envelope()
+@admin_router.put("/article", response_model=Envelope)
+async def update_article(_: AdminDep, svc: SvcDep, dto: ArticleDTO):
+    await svc.update_article(dto)
+    return Envelope()
+@admin_router.delete("/article", response_model=Envelope)
+async def batch_delete_article(_: AdminDep, svc: SvcDep, ids: Annotated[LegacyIdList, Query()]):
+    await svc.batch_delete_article(ids)
+    return Envelope()
+@admin_router.put("/article/publish/{id}", response_model=Envelope)
+async def publish_or_cancel(
+    _: AdminDep, svc: SvcDep, id: int, is_published: Annotated[int, Query(alias="isPublished")]
+):
+    await svc.publish_or_cancel(id, is_published)
+    return Envelope()
+@admin_router.put("/article/top/{id}", response_model=Envelope)
+async def toggle_top(
+    _: AdminDep, svc: SvcDep, id: int, is_top: Annotated[int, Query(alias="isTop")]
+):
+    await svc.toggle_top(id, is_top)
+    return Envelope()
 
 # Article Blog
 @router.get("/blog/article/page", response_model=Envelope)
